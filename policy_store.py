@@ -13,8 +13,8 @@ POLICY_VERSION = "guardrails-v3"
 DEFAULT_POLICY: dict[str, Any] = {
     "routes": dict(ROUTES),
     "courtesy_limit": SETTINGS.courtesy_limit,
-    "high_agreement_threshold": 0.85,
-    "human_review_agreement_threshold": 0.65,
+    "high_agreement_threshold": 0.7,
+    "human_review_agreement_threshold": 0.55,
     "high_confidence_threshold": 90,
 }
 PROTECTED_GUARDRAILS = [
