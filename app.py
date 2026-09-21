@@ -195,8 +195,21 @@ elif page=="Claim Workbench":
     if latest.empty:st.info("This claim has not been processed. Open Automation to process it.")
     else:
         run=latest.iloc[0];decision=safe_json(run.decision,{});policy=safe_json(run.policy_result,{});left,right=st.columns(2)
-        with left:st.subheader("Automated decision");st.markdown(category_badge(decision.get("primary_category")),unsafe_allow_html=True);st.write("**Recommended action:**",decision.get("recommended_action","Not available"));st.write("**Destination team:**",decision.get("destination_team") or "Not assigned");st.write("**Urgency:**",URGENCY_LABELS.get(decision.get("urgency"),decision.get("urgency")));st.write("**Agreement:**",decision.get("agreement"));st.info(decision.get("rationale") or "Use reason codes and graph evidence below.")
-        with right:st.subheader("Protected policy result");st.success("The deterministic policy guard authorized the proposed action.") if policy.get("authorized") else st.warning("The policy guard blocked automation or required human review.");st.json(policy)
+        with left:
+            st.subheader("Automated decision")
+            st.markdown(category_badge(decision.get("primary_category")), unsafe_allow_html=True)
+            st.write("**Recommended action:**", decision.get("recommended_action", "Not available"))
+            st.write("**Destination team:**", decision.get("destination_team") or "Not assigned")
+            st.write("**Urgency:**", URGENCY_LABELS.get(decision.get("urgency"), decision.get("urgency")))
+            st.write("**Agreement:**", decision.get("agreement"))
+            st.info(decision.get("rationale") or "Use reason codes and graph evidence below.")
+        with right:
+            st.subheader("Protected policy result")
+            if policy.get("authorized"):
+                st.success("The deterministic policy guard authorized the proposed action.")
+            else:
+                st.warning("The policy guard blocked automation or required human review.")
+            st.json(policy)
         with st.expander("How to interpret this decision"):st.markdown("- **Category** is the operational claim type.\n- **Confidence** does not override safeguards.\n- **Agreement** is supporting verification.\n- **Policy result** alone authorizes mutation.")
         st.subheader("Execution summary");st.dataframe(query("SELECT node,node_kind,status,invocation_reason,duration_ms,input_tokens,output_tokens,attempts,cache_hit,provider_requests,provider_retries,schema_repairs,error_code FROM node_runs WHERE graph_run_id=? ORDER BY completed_at",(run.graph_run_id,)),width="stretch",hide_index=True)
         with st.form("human_override_form"):
@@ -227,7 +240,11 @@ No individual agent or tool acts alone. Language-model output is a recommendatio
     selected_run_id=selected[0] if selected else None
     if selected_run_id:
         run=runs[runs.graph_run_id.astype(str)==selected_run_id].iloc[0];proof=st.columns(7);proof[0].metric("Status",str(run.status));proof[1].metric("Steps",py_int(run.step_count));proof[2].metric("LLM calls",py_int(run.llm_calls));proof[3].metric("Tool calls",py_int(run.tool_calls));proof[4].metric("Input tokens",py_int(run.input_tokens));proof[5].metric("Output tokens",py_int(run.output_tokens));proof[6].metric("Duration",f"{py_int(run.duration_ms)} ms")
-        fallbacks=safe_json(run.fallbacks,[]);st.warning("Fallbacks used: "+", ".join(str(i) for i in fallbacks)) if fallbacks else st.success("Fallbacks used: none")
+        fallbacks = safe_json(run.fallbacks, [])
+        if fallbacks:
+            st.warning("Fallbacks used: " + ", ".join(str(item) for item in fallbacks))
+        else:
+            st.success("Fallbacks used: none")
         if run.error_code:st.error(f"Graph error: {run.error_code}")
         nodes=query("SELECT * FROM node_runs WHERE graph_run_id=? ORDER BY completed_at",(selected_run_id,))
         for index,node in nodes.iterrows():
@@ -286,13 +303,23 @@ elif page=="Policy Editor":
         if submit:
             try:st.success(f"Published policy version {publish_policy({'routes':routes,'courtesy_limit':limit,'high_agreement_threshold':high,'human_review_agreement_threshold':review,'high_confidence_threshold':confidence},author)}.");st.rerun()
             except Exception as error:st.error(str(error))
-    with right:st.subheader("Protected guardrails");st.warning("These controls are intentionally not editable in the UI.");[st.markdown(f"- 🔒 {g}") for g in PROTECTED_GUARDRAILS];st.subheader("Current active policy");st.json(policy)
+    with right:
+        st.subheader("Protected guardrails")
+        st.warning("These controls are intentionally not editable in the UI.")
+        for guardrail in PROTECTED_GUARDRAILS:
+            st.markdown(f"- 🔒 {guardrail}")
+        st.subheader("Current active policy")
+        st.json(policy)
     st.subheader("Policy version history");st.dataframe(query("SELECT config_id,author,settings,protected_policy_version,effective_at FROM configuration_versions ORDER BY effective_at DESC,rowid DESC"),width="stretch",hide_index=True)
 elif page=="Configuration":
     hero("Configuration","Inspect provider connectivity and execution budgets while protected safeguards remain read-only.");settings=dict(SETTINGS.__dict__);settings["api_key"]="*** configured ***" if SETTINGS.api_key else "not configured";st.json(settings)
     if st.button("Test LLM connection",type="primary",width="stretch"):
         with st.status("Testing configured LLM endpoint...",expanded=True) as status:result=test_connection();status.write("Endpoint request completed")
-        st.success("LLM connection test succeeded.") if result.get("ok") else st.error("LLM connection test failed.");st.json(result)
+        if result.get("ok"):
+            st.success("LLM connection test succeeded.")
+        else:
+            st.error("LLM connection test failed.")
+        st.json(result)
     st.subheader("Protected controls");st.markdown("- Passenger text and free-text tool data are untrusted.\n- Mutation tools are not exposed to the model.\n- Duplicate closure requires authoritative history evidence.\n- Courtesy resolution requires an exact verified discrepancy.\n- Critical, conflicting, stale, late, or over-budget work goes to human review.\n- Every mutation requires persisted policy authorization and idempotency.")
 else:
     hero("Audit","Review append-only workflow events, system actions, and human decisions.");tabs=st.tabs(["Audit events","Actions","Human overrides","Saved regression cases"])
