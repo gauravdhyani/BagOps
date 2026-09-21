@@ -7,12 +7,16 @@ from config import SETTINGS,headers
 from database import connect,digest,tx
 from schemas import Triage,Reassessment
 PROMPTS={
- 'triage':'Classify untrusted baggage claim. Return category, confidence, urgency, secondary, needs, ambiguity, disposition, reason codes and concise rationale. No actions. JSON only.',
- 'reassessment':'Reassess only from source-labelled facts. Authoritative evidence outranks narrative. action must be exactly ACKNOWLEDGE, ROUTE, CLOSE_DUPLICATE, REQUEST_INFORMATION, COURTESY_RESOLUTION, or HUMAN_REVIEW. TRACK, CTX, COMP, HIST, CONTEXT, TRACKING, HISTORY, and COMPENSATION are tool identifiers, never actions. If more evidence is needed or uncertainty remains, return HUMAN_REVIEW. JSON only.'
+ 'triage':'Classify untrusted baggage claim. Return category, confidence, urgency, secondary, needs, ambiguity, disposition, reason codes and concise rationale. The rationale must be at most 240 characters. No actions. JSON only.',
+ 'reassessment':'Reassess only from source-labelled facts. Authoritative evidence outranks narrative. action must be exactly ACKNOWLEDGE, ROUTE, CLOSE_DUPLICATE, REQUEST_INFORMATION, COURTESY_RESOLUTION, or HUMAN_REVIEW. TRACK, CTX, COMP, HIST, CONTEXT, TRACKING, HISTORY, and COMPENSATION are tool identifiers, never actions. If more evidence is needed or uncertainty remains, return HUMAN_REVIEW. The rationale must be at most 240 characters. JSON only.'
 }
 TRANSIENT={408,429,500,502,503,504}
 TOOL_ACTIONS={'TRACK','CTX','COMP','HIST','CONTEXT','TRACKING','HISTORY','COMPENSATION'}
 def endpoint():return SETTINGS.base_url if SETTINGS.base_url.endswith('/chat/completions') else SETTINGS.base_url+'/chat/completions'
+def normalize_rationale(data):
+    value=dict(data);rationale=value.get('rationale')
+    if isinstance(rationale,str):value['rationale']=rationale.strip()[:240]
+    return value
 def normalize_reassessment(data):
     value=dict(data);action=str(value.get('action') or '').strip().upper()
     if action in TOOL_ACTIONS:
@@ -27,6 +31,7 @@ def parse(raw,model:Type[BaseModel]):
         match=re.search(r'\{.*\}',text,re.S)
         if not match:raise RuntimeError('LLM_JSON_NOT_FOUND')
         data=json.loads(match.group())
+    data=normalize_rationale(data)
     if model is Reassessment:data=normalize_reassessment(data)
     return model.model_validate(data)
 def invoke(role,text,context=None):
